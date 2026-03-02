@@ -1,0 +1,14 @@
+{
+  "profiles": [
+    {
+      "id": "1772436470568",
+      "host": "sasta.play.hosting",
+      "port": "25565",
+      "username": "SastaBot",
+      "version": "",
+      "auth": "offline",
+      "label": "SastaBot@sasta.play.hosting",
+      "savedAt": "2026-03-02T07:27:50.568Z"
+    }
+  ]
+}

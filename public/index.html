@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MCBot Terminal</title>
+<script src="/socket.io/socket.io.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #080c10;
+  --surface:   #0d1117;
+  --card:      #111820;
+  --border:    #1e2d3d;
+  --border2:   #0f1923;
+  --accent:    #00ff88;
+  --accent2:   #00c8ff;
+  --accent3:   #ff6b35;
+  --warn:      #ffd700;
+  --danger:    #ff4455;
+  --text:      #c9d8e8;
+  --muted:     #4a6070;
+  --dim:       #2a3a4a;
+  --glow:      0 0 20px rgba(0,255,136,.15);
+  --glow2:     0 0 20px rgba(0,200,255,.15);
+  --font:      'Fira Code', monospace;
+  --head:      'Orbitron', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* Subtle scanline overlay */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,.07) 2px, rgba(0,0,0,.07) 4px);
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── LAYOUT ─────────────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-rows: 52px 1fr;
+  grid-template-columns: 320px 1fr;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ── TOPBAR ─────────────────────────────────────────────────────── */
+.topbar {
+  grid-column: 1 / -1;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  position: relative;
+}
+
+.logo {
+  font-family: var(--head);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(0,255,136,.6);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.logo .block {
+  display: inline-grid;
+  grid-template-columns: repeat(3,4px);
+  grid-template-rows: repeat(3,4px);
+  gap: 1px;
+}
+.logo .block span {
+  display: block;
+  background: var(--accent);
+  border-radius: 1px;
+}
+.logo .block span:nth-child(2),
+.logo .block span:nth-child(4),
+.logo .block span:nth-child(6),
+.logo .block span:nth-child(8) { background: transparent; }
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 8px;
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 2px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.status-badge.online  { border-color: var(--accent);  color: var(--accent);  }
+.status-badge.offline { border-color: var(--muted);   color: var(--muted);   }
+.status-badge.busy    { border-color: var(--warn);     color: var(--warn);    }
+.status-badge.error   { border-color: var(--danger);   color: var(--danger);  }
+
+.dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.dot.pulse { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+
+.server-tag {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: .5px;
+  border-left: 1px solid var(--border);
+  padding-left: 12px;
+}
+.server-tag strong { color: var(--accent2); }
+
+.topbar-controls {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.pill-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .2s;
+}
+.pill-toggle:hover { border-color: var(--dim); color: var(--text); }
+.pill-toggle.active { border-color: var(--accent); color: var(--accent); background: rgba(0,255,136,.05); }
+.pill-toggle.active.blue { border-color: var(--accent2); color: var(--accent2); background: rgba(0,200,255,.05); }
+.pill-toggle .led {
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── SIDEBAR ─────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 4px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all .15s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.tab-pane { display: none; flex: 1; overflow-y: auto; flex-direction: column; }
+.tab-pane.active { display: flex; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--dim); border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ── CONNECT FORM ──────────────────────────────────────────────── */
+.form-section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border2);
+}
+.section-label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border2);
+}
+
+.field { margin-bottom: 10px; }
+.field label {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+.field input, .field select {
+  width: 100%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 7px 10px;
+  outline: none;
+  border-radius: 2px;
+  transition: border-color .15s;
+}
+.field input:focus, .field select:focus { border-color: var(--accent); }
+.field input::placeholder { color: var(--dim); }
+.field select option { background: var(--card); }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+.btn-primary {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .15s;
+  margin-top: 4px;
+}
+.btn-primary:hover { background: rgba(0,255,136,.08); box-shadow: var(--glow); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { border-color: var(--dim); color: var(--dim); cursor: not-allowed; background: transparent; box-shadow: none; }
+
+.btn-danger {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  font-family: var(--font);
+  font-size: 11px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .15s;
+  margin-top: 4px;
+}
+.btn-danger:hover { background: rgba(255,68,85,.08); }
+.btn-danger:disabled { border-color: var(--dim); color: var(--dim); cursor: not-allowed; }
+
+/* ── STATS ─────────────────────────────────────────────────────── */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border2);
+  border: 1px solid var(--border2);
+}
+.stat-box {
+  background: var(--card);
+  padding: 10px 12px;
+  text-align: center;
+}
+.stat-box .s-label { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+.stat-box .s-val   { font-size: 20px; font-weight: 500; }
+.stat-box.health .s-val { color: var(--danger); }
+.stat-box.food   .s-val { color: var(--warn);   }
+.stat-box.pos .s-val    { font-size: 11px; color: var(--accent2); }
+.stat-box.exp .s-val    { color: var(--accent); font-size: 16px; }
+
+.stat-box { grid-column: span 1; }
+.stat-box.wide { grid-column: span 2; }
+
+.bar-wrap { height: 4px; background: var(--border2); border-radius: 2px; margin-top: 5px; }
+.bar-fill  { height: 100%; border-radius: 2px; transition: width .4s ease; }
+.bar-fill.hp   { background: var(--danger); }
+.bar-fill.food { background: var(--warn); }
+
+/* ── PROFILES ─────────────────────────────────────────────────── */
+.profiles-list { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all .15s;
+  position: relative;
+}
+.profile-card:hover { border-color: var(--accent2); background: rgba(0,200,255,.04); }
+.profile-card .p-icon {
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, var(--accent2), var(--accent));
+  border-radius: 2px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.profile-card .p-info { flex: 1; min-width: 0; }
+.profile-card .p-name { font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-card .p-server { font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.profile-card .p-del {
+  opacity: 0;
+  background: transparent;
+  border: none;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  transition: opacity .15s;
+}
+.profile-card:hover .p-del { opacity: 1; }
+
+.no-profiles {
+  text-align: center;
+  padding: 30px 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 2;
+}
+
+/* ── QUICK CMDS ───────────────────────────────────────────────── */
+.cmd-grid { padding: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.qcmd {
+  padding: 7px 4px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--accent2);
+  font-family: var(--font);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+  text-align: center;
+  transition: all .15s;
+}
+.qcmd:hover { border-color: var(--accent2); background: rgba(0,200,255,.06); }
+.qcmd:disabled { color: var(--dim); border-color: var(--border2); cursor: not-allowed; }
+
+/* ── CHAT PANEL ───────────────────────────────────────────────── */
+.chat-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.chat-toolbar-title {
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.filter-row { display: flex; gap: 4px; margin-left: auto; }
+.filt {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .12s;
+}
+.filt:hover { color: var(--text); }
+.filt.on { border-color: var(--accent2); color: var(--accent2); background: rgba(0,200,255,.05); }
+
+.msg-count { font-size: 10px; color: var(--dim); margin-left: 4px; }
+
+/* ── MESSAGES ─────────────────────────────────────────────────── */
+.chat-log {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.msg-row {
+  display: grid;
+  grid-template-columns: 52px 44px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 6px;
+  border-radius: 2px;
+  transition: background .1s;
+  animation: msgIn .15s ease;
+  line-height: 1.5;
+}
+.msg-row:hover { background: rgba(255,255,255,.02); }
+@keyframes msgIn { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; } }
+
+.msg-time { font-size: 10px; color: var(--dim); text-align: right; }
+
+.msg-badge {
+  font-size: 9px;
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+.badge-chat    { background: rgba(0,255,136,.1);  color: var(--accent);  }
+.badge-server  { background: rgba(255,215,0,.08); color: var(--warn);    }
+.badge-system  { background: rgba(0,200,255,.08); color: var(--accent2); }
+.badge-error   { background: rgba(255,68,85,.1);  color: var(--danger);  }
+.badge-whisper { background: rgba(200,100,255,.1);color: #d080ff;        }
+.badge-command { background: rgba(255,107,53,.1); color: var(--accent3); }
+.badge-you     { background: rgba(0,255,136,.15); color: var(--accent);  }
+
+.msg-body { font-size: 13px; word-break: break-word; }
+.msg-body .user { font-weight: 500; }
+.user-chat    { color: var(--warn); }
+.user-self    { color: var(--accent); }
+.user-whisper { color: #d080ff; }
+.body-chat    { color: var(--text);    }
+.body-server  { color: #b8c8a0;        }
+.body-system  { color: var(--accent2); }
+.body-error   { color: var(--danger);  }
+.body-whisper { color: #d0a0ff; font-style: italic; }
+.body-command { color: var(--accent3); }
+
+.empty-chat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--dim);
+}
+.empty-chat .e-icon {
+  font-size: 48px;
+  filter: grayscale(1) opacity(.3);
+}
+.empty-chat p {
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+  line-height: 2;
+}
+
+/* ── INPUT BAR ────────────────────────────────────────────────── */
+.input-bar {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.input-mode-btn {
+  width: 34px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font);
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .15s;
+  flex-shrink: 0;
+}
+.input-mode-btn.cmd { border-color: var(--accent3); color: var(--accent3); background: rgba(255,107,53,.06); }
+
+.chat-field {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 8px 12px;
+  outline: none;
+  border-radius: 2px;
+  transition: border-color .15s;
+}
+.chat-field:focus { border-color: var(--accent); }
+.chat-field.cmd-mode:focus { border-color: var(--accent3); }
+.chat-field:disabled { opacity: .35; cursor: not-allowed; }
+.chat-field::placeholder { color: var(--dim); }
+
+.send-btn {
+  padding: 8px 18px;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--font);
+  font-size: 10px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all .15s;
+}
+.send-btn:hover { background: rgba(0,255,136,.08); box-shadow: var(--glow); }
+.send-btn.cmd { border-color: var(--accent3); color: var(--accent3); }
+.send-btn.cmd:hover { background: rgba(255,107,53,.08); box-shadow: 0 0 20px rgba(255,107,53,.15); }
+.send-btn:disabled { border-color: var(--dim); color: var(--dim); cursor: not-allowed; background: transparent; box-shadow: none; }
+
+/* ── SAVE PROFILE TOAST ───────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: var(--card);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 8px 16px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  border-radius: 2px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all .2s;
+  pointer-events: none;
+  z-index: 1000;
+}
+.toast.show { opacity: 1; transform: translateY(0); }
+
+/* Scrollback indicator */
+.scroll-hint {
+  position: absolute;
+  bottom: 72px;
+  right: 20px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 2px;
+  display: none;
+  z-index: 10;
+}
+.scroll-hint:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── TOPBAR ─────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="logo">
+      <div class="block">
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+        <span></span><span></span><span></span>
+      </div>
+      MCBOT
+    </div>
+
+    <div class="topbar-status">
+      <div class="status-badge offline" id="statusBadge">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">OFFLINE</span>
+      </div>
+      <div class="server-tag" id="serverTag" style="display:none">
+        <strong id="serverTagUser"></strong>@<span id="serverTagHost"></span>
+      </div>
+    </div>
+
+    <div class="topbar-controls">
+      <button class="pill-toggle" id="afkToggle" onclick="toggleAfk()" title="Anti-AFK">
+        <span class="led"></span> ANTI-AFK
+      </button>
+      <button class="pill-toggle blue" id="reconnToggle" onclick="toggleReconn()" title="Auto-Reconnect">
+        <span class="led"></span> AUTO-REJOIN
+      </button>
+    </div>
+  </header>
+
+  <!-- ── SIDEBAR ───────────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="sidebar-tabs">
+      <button class="tab-btn active" onclick="showTab('connect',this)">Connect</button>
+      <button class="tab-btn" onclick="showTab('profiles',this)">Profiles</button>
+      <button class="tab-btn" onclick="showTab('stats',this)">Stats</button>
+      <button class="tab-btn" onclick="showTab('cmds',this)">Cmds</button>
+    </div>
+
+    <!-- CONNECT TAB -->
+    <div class="tab-pane active" id="tab-connect">
+      <div class="form-section">
+        <div class="section-label">Server</div>
+        <div class="field">
+          <label>Host</label>
+          <input id="f-host" type="text" placeholder="mc.hypixel.net" value="localhost" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label>Port</label>
+            <input id="f-port" type="number" placeholder="25565" value="25565">
+          </div>
+          <div class="field">
+            <label>Version</label>
+            <input id="f-version" type="text" placeholder="auto">
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="section-label">Account</div>
+        <div class="field">
+          <label>Username</label>
+          <input id="f-user" type="text" placeholder="YourBotName" value="CoolBot" spellcheck="false">
+        </div>
+        <div class="field">
+          <label>Auth Mode</label>
+          <select id="f-auth">
+            <option value="offline">Offline / Cracked</option>
+            <option value="microsoft">Microsoft (Premium)</option>
+            <option value="mojang">Mojang (Legacy)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Password (premium)</label>
+          <input id="f-pass" type="password" placeholder="leave blank for offline">
+        </div>
+      </div>
+
+      <div class="form-section">
+        <button class="btn-primary" id="connectBtn" onclick="connectBot()">▶ CONNECT</button>
+        <button class="btn-danger" id="disconnBtn" onclick="disconnectBot()" disabled>■ DISCONNECT</button>
+        <button class="btn-primary" style="border-color:var(--accent2);color:var(--accent2);margin-top:6px" onclick="saveProfile()">
+          ⊕ SAVE AS PROFILE
+        </button>
+      </div>
+    </div>
+
+    <!-- PROFILES TAB -->
+    <div class="tab-pane" id="tab-profiles">
+      <div class="profiles-list" id="profilesList">
+        <div class="no-profiles">No saved profiles yet.<br>Fill the Connect tab and click<br>"Save as Profile".</div>
+      </div>
+    </div>
+
+    <!-- STATS TAB -->
+    <div class="tab-pane" id="tab-stats">
+      <div style="padding:16px">
+        <div class="stats-grid">
+          <div class="stat-box health">
+            <div class="s-label">❤ Health</div>
+            <div class="s-val" id="sHealth">—</div>
+            <div class="bar-wrap"><div class="bar-fill hp" id="bHealth" style="width:0%"></div></div>
+          </div>
+          <div class="stat-box food">
+            <div class="s-label">🍗 Food</div>
+            <div class="s-val" id="sFood">—</div>
+            <div class="bar-wrap"><div class="bar-fill food" id="bFood" style="width:0%"></div></div>
+          </div>
+          <div class="stat-box pos wide">
+            <div class="s-label">📍 Position</div>
+            <div class="s-val" id="sPos">—</div>
+          </div>
+          <div class="stat-box exp wide">
+            <div class="s-label">✦ Experience</div>
+            <div class="s-val" id="sExp">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CMDS TAB -->
+    <div class="tab-pane" id="tab-cmds">
+      <div class="cmd-grid" id="cmdGrid">
+        <button class="qcmd" onclick="qcmd('/help')">/help</button>
+        <button class="qcmd" onclick="qcmd('/list')">/list</button>
+        <button class="qcmd" onclick="qcmd('/spawn')">/spawn</button>
+        <button class="qcmd" onclick="qcmd('/home')">/home</button>
+        <button class="qcmd" onclick="qcmd('/back')">/back</button>
+        <button class="qcmd" onclick="qcmd('/tpa')">/tpa</button>
+        <button class="qcmd" onclick="qcmd('/kit')">/kit</button>
+        <button class="qcmd" onclick="qcmd('/warp')">/warp</button>
+        <button class="qcmd" onclick="qcmd('/sethome')">/sethome</button>
+        <button class="qcmd" onclick="qcmd('/msg')">/msg</button>
+        <button class="qcmd" onclick="qcmd('/bal')">/bal</button>
+        <button class="qcmd" onclick="qcmd('/shop')">/shop</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── CHAT PANEL ─────────────────────────────────────────────── -->
+  <main class="chat-panel" style="position:relative">
+    <div class="chat-toolbar">
+      <span class="chat-toolbar-title">Terminal Output</span>
+      <span class="msg-count" id="msgCount">0 msgs</span>
+      <div class="filter-row">
+        <button class="filt on"  onclick="setFilter('all',this)">All</button>
+        <button class="filt"     onclick="setFilter('chat',this)">Chat</button>
+        <button class="filt"     onclick="setFilter('server',this)">Server</button>
+        <button class="filt"     onclick="setFilter('system',this)">Sys</button>
+        <button class="filt"     onclick="setFilter('error',this)">Err</button>
+      </div>
+    </div>
+
+    <div class="chat-log" id="chatLog" onscroll="onLogScroll()">
+      <div class="empty-chat" id="emptyState">
+        <div class="e-icon">⛏️</div>
+        <p>Waiting for connection…<br>Configure & connect in the sidebar.</p>
+      </div>
+    </div>
+
+    <div class="scroll-hint" id="scrollHint" onclick="scrollBottom()">▼ New messages</div>
+
+    <div class="input-bar">
+      <button class="input-mode-btn" id="modeBtn" onclick="toggleMode()" title="Toggle chat/command">💬</button>
+      <input class="chat-field" id="chatField"
+        placeholder="Type a message… (/ for commands)"
+        disabled maxlength="256"
+        onkeydown="onKey(event)"
+        oninput="onInput(this)">
+      <button class="send-btn" id="sendBtn" onclick="send()" disabled>SEND</button>
+    </div>
+  </main>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────
+const socket = io({ reconnection: true, reconnectionDelay: 2000 });
+let connected = false;
+let cmdMode   = false;
+let filter    = 'all';
+let allMsgs   = [];
+let autoScroll= true;
+let afkOn     = false;
+let reconnOn  = false;
+
+// ── Socket events ────────────────────────────────────────────────
+socket.on('connect',    () => sysmsg('UI connected to bot server'));
+socket.on('disconnect', () => sysmsg('Lost connection to bot server — retrying…'));
+
+socket.on('status', d => applyStatus(d));
+socket.on('history', msgs => { allMsgs = []; clearLog(); msgs.forEach(m => addMsg(m, false)); scrollBottom(); });
+socket.on('message', m => addMsg(m));
+socket.on('profiles', list => renderProfiles(list));
+socket.on('stats', d => applyStats(d));
+
+// ── Status ───────────────────────────────────────────────────────
+function applyStatus(d) {
+  const s = d.status;
+  connected = s === 'connected';
+
+  const badge = document.getElementById('statusBadge');
+  const dot   = document.getElementById('statusDot');
+  const txt   = document.getElementById('statusText');
+  const tag   = document.getElementById('serverTag');
+
+  badge.className = 'status-badge';
+  dot.className   = 'dot';
+
+  if (s === 'connected') {
+    badge.classList.add('online'); txt.textContent = d.username || 'ONLINE';
+    if (d.username && d.server) {
+      document.getElementById('serverTagUser').textContent = d.username;
+      document.getElementById('serverTagHost').textContent = d.server;
+      tag.style.display = '';
+    }
+  } else if (s === 'connecting' || s === 'reconnecting') {
+    badge.classList.add('busy');
+    dot.classList.add('pulse');
+    txt.textContent = s === 'reconnecting' ? `RECONNECTING ${d.reconnectAttempts||''}` : 'CONNECTING…';
+    tag.style.display = 'none';
+  } else if (s === 'error') {
+    badge.classList.add('error'); txt.textContent = 'ERROR'; tag.style.display = 'none';
+  } else {
+    badge.classList.add('offline'); txt.textContent = 'OFFLINE'; tag.style.display = 'none';
+  }
+
+  const busy = s === 'connected' || s === 'connecting' || s === 'reconnecting';
+  document.getElementById('connectBtn').disabled  = busy;
+  document.getElementById('disconnBtn').disabled  = !busy;
+  document.getElementById('chatField').disabled   = !connected;
+  document.getElementById('sendBtn').disabled      = !connected;
+  document.querySelectorAll('.qcmd').forEach(b => b.disabled = !connected);
+
+  if (d.autoReconnect !== undefined) setReconnToggle(d.autoReconnect);
+  if (d.antiAfkEnabled !== undefined) setAfkToggle(d.antiAfkEnabled);
+}
+
+function setAfkToggle(val) {
+  afkOn = val;
+  const b = document.getElementById('afkToggle');
+  b.classList.toggle('active', val);
+}
+function setReconnToggle(val) {
+  reconnOn = val;
+  const b = document.getElementById('reconnToggle');
+  b.classList.toggle('active', val);
+}
+
+function toggleAfk() {
+  if (!connected) { toast('Connect first'); return; }
+  afkOn = !afkOn; socket.emit('toggle_antiafk', afkOn); setAfkToggle(afkOn);
+}
+function toggleReconn() {
+  reconnOn = !reconnOn; socket.emit('toggle_autoreconnect', reconnOn); setReconnToggle(reconnOn);
+}
+
+// ── Stats ────────────────────────────────────────────────────────
+function applyStats(d) {
+  if (d.health !== undefined) {
+    document.getElementById('sHealth').textContent = Math.round(d.health * 10) / 10;
+    document.getElementById('bHealth').style.width = Math.min(100, d.health / 20 * 100) + '%';
+  }
+  if (d.food !== undefined) {
+    document.getElementById('sFood').textContent = Math.round(d.food);
+    document.getElementById('bFood').style.width = Math.min(100, d.food / 20 * 100) + '%';
+  }
+  if (d.position) {
+    const p = d.position;
+    document.getElementById('sPos').textContent = `${Math.round(p.x)}, ${Math.round(p.y)}, ${Math.round(p.z)}`;
+  }
+  if (d.experience) {
+    const xp = d.experience;
+    document.getElementById('sExp').textContent = `Lv${xp.level} · ${Math.round((xp.progress||0)*100)}%`;
+  }
+}
+
+// ── Messages ─────────────────────────────────────────────────────
+function clearLog() {
+  const log = document.getElementById('chatLog');
+  log.innerHTML = '';
+}
+
+function addMsg(m, scroll = true) {
+  const es = document.getElementById('emptyState');
+  if (es) es.remove();
+  allMsgs.push(m);
+  updateCount();
+  if (filter !== 'all' && m.type !== filter) return;
+  renderMsg(m);
+  if (scroll && autoScroll) scrollBottom();
+  else if (scroll && !autoScroll) document.getElementById('scrollHint').style.display = 'block';
+}
+
+function renderMsg(m) {
+  const log = document.getElementById('chatLog');
+  const d   = document.createElement('div');
+  d.className = 'msg-row';
+  d.dataset.type = m.type;
+
+  const t = new Date(m.timestamp);
+  const time = `${pad(t.getHours())}:${pad(t.getMinutes())}:${pad(t.getSeconds())}`;
+
+  let badgeClass = 'badge-system';
+  let badgeText  = m.type;
+  let bodyClass  = 'body-system';
+  let userPart   = '';
+
+  if (m.type === 'chat') {
+    if (m.self) {
+      badgeClass = 'badge-you'; badgeText = 'YOU'; bodyClass = 'body-chat';
+      userPart = `<span class="user user-self">&lt;${esc(m.username)}&gt;</span> `;
+    } else {
+      badgeClass = 'badge-chat'; badgeText = 'CHAT'; bodyClass = 'body-chat';
+      userPart = `<span class="user user-chat">&lt;${esc(m.username)}&gt;</span> `;
+    }
+  } else if (m.type === 'server')  { badgeClass = 'badge-server';  badgeText = 'SRV';  bodyClass = 'body-server';  }
+  else if (m.type === 'error')     { badgeClass = 'badge-error';   badgeText = 'ERR';  bodyClass = 'body-error';   }
+  else if (m.type === 'whisper')   { badgeClass = 'badge-whisper'; badgeText = 'DM';   bodyClass = 'body-whisper';
+    userPart = `<span class="user user-whisper">${esc(m.username)} → </span>`; }
+  else if (m.type === 'command')   { badgeClass = 'badge-command'; badgeText = 'CMD';  bodyClass = 'body-command'; }
+  else if (m.type === 'system')    { badgeClass = 'badge-system';  badgeText = 'SYS';  bodyClass = 'body-system';  }
+
+  d.innerHTML = `
+    <span class="msg-time">${time}</span>
+    <span class="msg-badge ${badgeClass}">${badgeText}</span>
+    <span class="msg-body ${bodyClass}">${userPart}${esc(m.message)}</span>
+  `;
+  log.appendChild(d);
+}
+
+function sysmsg(text) {
+  addMsg({ type: 'system', message: text, timestamp: new Date().toISOString() });
+}
+
+function setFilter(f, btn) {
+  filter = f;
+  document.querySelectorAll('.filt').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  const log = document.getElementById('chatLog');
+  log.innerHTML = '';
+  const shown = f === 'all' ? allMsgs : allMsgs.filter(m => m.type === f);
+  shown.forEach(m => renderMsg(m));
+  scrollBottom();
+}
+
+function updateCount() {
+  document.getElementById('msgCount').textContent = `${allMsgs.length} msgs`;
+}
+
+function pad(n) { return String(n).padStart(2,'0'); }
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ── Scroll ───────────────────────────────────────────────────────
+function scrollBottom() {
+  const log = document.getElementById('chatLog');
+  log.scrollTop = log.scrollHeight;
+  autoScroll = true;
+  document.getElementById('scrollHint').style.display = 'none';
+}
+function onLogScroll() {
+  const log = document.getElementById('chatLog');
+  autoScroll = log.scrollHeight - log.scrollTop - log.clientHeight < 50;
+  if (autoScroll) document.getElementById('scrollHint').style.display = 'none';
+}
+
+// ── Input ────────────────────────────────────────────────────────
+function onKey(e) { if (e.key === 'Enter') send(); }
+function onInput(el) {
+  const isCmd = el.value.startsWith('/');
+  if (isCmd !== cmdMode) setCmdMode(isCmd);
+}
+function toggleMode() {
+  const f = document.getElementById('chatField');
+  setCmdMode(!cmdMode);
+  if (cmdMode && !f.value.startsWith('/')) f.value = '/';
+  else if (!cmdMode && f.value === '/') f.value = '';
+  f.focus();
+}
+function setCmdMode(val) {
+  cmdMode = val;
+  const btn = document.getElementById('modeBtn');
+  const send = document.getElementById('sendBtn');
+  const field = document.getElementById('chatField');
+  btn.textContent = val ? '/' : '💬';
+  btn.className = val ? 'input-mode-btn cmd' : 'input-mode-btn';
+  send.className = val ? 'send-btn cmd' : 'send-btn';
+  send.textContent = val ? 'RUN' : 'SEND';
+  field.className = val ? 'chat-field cmd-mode' : 'chat-field';
+  field.placeholder = val ? 'Enter command…' : 'Type a message… (/ for commands)';
+}
+function send() {
+  const f = document.getElementById('chatField');
+  const v = f.value.trim();
+  if (!v || !connected) return;
+  if (v.startsWith('/')) socket.emit('send_command', v);
+  else socket.emit('send_chat', v);
+  f.value = '';
+  setCmdMode(false);
+}
+function qcmd(cmd) {
+  if (!connected) { toast('Not connected'); return; }
+  const f = document.getElementById('chatField');
+  f.value = cmd + ' ';
+  f.focus();
+  setCmdMode(true);
+}
+
+// ── Connection ───────────────────────────────────────────────────
+function getConfig() {
+  return {
+    host:          document.getElementById('f-host').value.trim() || 'localhost',
+    port:          document.getElementById('f-port').value || 25565,
+    username:      document.getElementById('f-user').value.trim() || 'Bot',
+    version:       document.getElementById('f-version').value.trim() || null,
+    auth:          document.getElementById('f-auth').value,
+    password:      document.getElementById('f-pass').value,
+    autoReconnect: reconnOn,
+    antiAfk:       afkOn,
+  };
+}
+function connectBot() {
+  const cfg = getConfig();
+  if (!cfg.version) delete cfg.version;
+  socket.emit('connect_bot', cfg);
+}
+function disconnectBot() { socket.emit('disconnect_bot'); }
+
+// ── Profiles ─────────────────────────────────────────────────────
+function saveProfile() {
+  const cfg = getConfig();
+  const profile = {
+    id:       Date.now().toString(),
+    host:     cfg.host,
+    port:     cfg.port,
+    username: cfg.username,
+    version:  cfg.version || '',
+    auth:     cfg.auth,
+    label:    `${cfg.username}@${cfg.host}`,
+    savedAt:  new Date().toISOString(),
+  };
+  socket.emit('save_profile', profile);
+  toast(`Profile saved: ${profile.label}`);
+}
+
+function loadProfile(p) {
+  document.getElementById('f-host').value    = p.host || '';
+  document.getElementById('f-port').value    = p.port || 25565;
+  document.getElementById('f-user').value    = p.username || '';
+  document.getElementById('f-version').value = p.version || '';
+  document.getElementById('f-auth').value    = p.auth || 'offline';
+  showTab('connect', document.querySelector('.tab-btn'));
+  toast(`Profile loaded: ${p.label}`);
+}
+
+function renderProfiles(list) {
+  const el = document.getElementById('profilesList');
+  if (!list || list.length === 0) {
+    el.innerHTML = '<div class="no-profiles">No saved profiles yet.<br>Fill the Connect tab and click<br>"Save as Profile".</div>';
+    return;
+  }
+  el.innerHTML = '';
+  list.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'profile-card';
+    card.innerHTML = `
+      <div class="p-icon">⛏</div>
+      <div class="p-info">
+        <div class="p-name">${esc(p.username)}</div>
+        <div class="p-server">${esc(p.host)}:${esc(String(p.port))}</div>
+      </div>
+      <button class="p-del" title="Delete" onclick="event.stopPropagation();deleteProfile('${p.id}')">✕</button>
+    `;
+    card.addEventListener('click', () => loadProfile(p));
+    el.appendChild(card);
+  });
+}
+
+function deleteProfile(id) {
+  socket.emit('delete_profile', id);
+}
+
+// ── Tabs ─────────────────────────────────────────────────────────
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  if (btn) btn.classList.add('active');
+  else {
+    // Find the right button by index
+    const tabs = ['connect','profiles','stats','cmds'];
+    const idx = tabs.indexOf(name);
+    if (idx >= 0) document.querySelectorAll('.tab-btn')[idx]?.classList.add('active');
+  }
+}
+
+// ── Toast ────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+socket.emit('get_profiles');
+</script>
+</body>
+</html>
